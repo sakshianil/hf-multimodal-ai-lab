@@ -28,12 +28,7 @@ def get_local_speech_recognizer():
 
 
 def convert_audio_to_wav(input_path: str) -> str:
-    """Convert uploaded/recorded audio to a clean WAV file for local Whisper.
-
-    Gradio recordings may arrive as webm/mp4/temp files that soundfile cannot
-    decode directly. The Hugging Face Space has ffmpeg available in most Gradio
-    images, so we normalize everything to 16 kHz mono WAV before transcription.
-    """
+    """Convert uploaded/recorded audio to clean 16 kHz mono WAV."""
     source = Path(input_path)
     if not source.exists():
         raise FileNotFoundError(f"Audio file not found: {input_path}")
@@ -75,11 +70,19 @@ def transcribe_with_local_whisper(audio_path: str) -> str:
     return str(result).strip()
 
 
-def transcribe_with_openai(audio_path: str, api_key: str) -> str:
-    client = OpenAI(api_key=api_key)
-    with open(audio_path, "rb") as audio_file:
-        result = client.audio.transcriptions.create(model="whisper-1", file=audio_file)
-    return (getattr(result, "text", None) or str(result)).strip()
+def normalize_provider_and_model(provider: Provider, api_key: str, model: str) -> tuple[str, str]:
+    """Avoid sending OpenRouter keys to OpenAI endpoints."""
+    api_key = (api_key or "").strip()
+    provider = provider or "OpenAI"
+    model = (model or "gpt-4o-mini").strip()
+
+    if api_key.startswith("sk-or-"):
+        provider = "OpenRouter"
+
+    if provider == "OpenRouter" and "/" not in model:
+        model = f"openai/{model}"
+
+    return provider, model
 
 
 def build_llm_summary(
@@ -92,13 +95,14 @@ def build_llm_summary(
     if not api_key.strip():
         return "No API key was provided, so only transcription was generated. Add your own OpenAI or OpenRouter key for LLM analysis."
 
+    provider, model = normalize_provider_and_model(provider, api_key, model)
     base_url = OPENROUTER_BASE_URL if provider == "OpenRouter" else None
     client = OpenAI(api_key=api_key.strip(), base_url=base_url)
 
     prompt = f"""
 You are a helpful multimodal AI assistant.
 
-A user uploaded an audio file. The audio has been transcribed.
+A user uploaded an audio file. The audio has been transcribed locally using Whisper.
 
 User goal:
 {user_goal or "Explain the transcription and create a strong image-generation prompt."}
@@ -114,7 +118,7 @@ Return a structured response with:
 """.strip()
 
     response = client.chat.completions.create(
-        model=model.strip(),
+        model=model,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
     )
@@ -133,20 +137,16 @@ def process_audio_workflow(
         return "Please upload or record an audio file first.", "", ""
 
     api_key = (api_key or "").strip()
-    provider = provider or "OpenAI"
-    model = (model or "gpt-4o-mini").strip()
+    provider, model = normalize_provider_and_model(provider, api_key, model)
     instruction = instruction or "Transcribe this audio, explain it, and create an image-generation prompt."
 
-    progress(0.2, desc="Preparing and transcribing audio...")
+    progress(0.2, desc="Preparing and transcribing audio locally...")
     try:
-        if provider == "OpenAI" and api_key:
-            transcription = transcribe_with_openai(audio_path, api_key)
-        else:
-            transcription = transcribe_with_local_whisper(audio_path)
+        transcription = transcribe_with_local_whisper(audio_path)
     except Exception as exc:
         return f"Transcription failed: {exc}", "", ""
 
-    progress(0.7, desc="Running LLM analysis...")
+    progress(0.7, desc="Running LLM analysis with user-provided key...")
     try:
         analysis = build_llm_summary(
             transcription=transcription,
@@ -173,7 +173,7 @@ Style: expressive, atmospheric, emotionally rich, detailed lighting, high-qualit
 with gr.Blocks(title=APP_TITLE) as demo:
     gr.Markdown(f"# {APP_TITLE}")
     gr.Markdown(
-        "Upload or record audio, then process it with local Whisper or your own OpenAI/OpenRouter key. "
+        "Upload or record audio. The app transcribes locally with Whisper Tiny, then optionally uses your own OpenAI/OpenRouter key for analysis. "
         "No API key is stored or hardcoded."
     )
     gr.Markdown(f"GitHub: {GITHUB_REPO}  \nHugging Face Space: {HF_SPACE}")
@@ -188,7 +188,7 @@ with gr.Blocks(title=APP_TITLE) as demo:
     with gr.Accordion("API settings", open=True):
         provider_input = gr.Dropdown(
             choices=["OpenAI", "OpenRouter"],
-            value="OpenAI",
+            value="OpenRouter",
             label="Provider for LLM analysis",
         )
         api_key_input = gr.Textbox(
@@ -198,12 +198,12 @@ with gr.Blocks(title=APP_TITLE) as demo:
         )
         model_input = gr.Textbox(
             label="Model",
-            value="gpt-4o-mini",
-            placeholder="OpenAI: gpt-4o-mini | OpenRouter: openai/gpt-4o-mini",
+            value="openai/gpt-4o-mini",
+            placeholder="OpenRouter: openai/gpt-4o-mini | OpenAI: gpt-4o-mini",
         )
 
     run_button = gr.Button("Process audio", variant="primary")
-    transcription_output = gr.Textbox(label="1. Transcription", lines=6)
+    transcription_output = gr.Textbox(label="1. Local Whisper transcription", lines=6)
     analysis_output = gr.Markdown(label="2. LLM analysis")
     image_prompt_output = gr.Textbox(label="3. Image-generation prompt", lines=8)
 
