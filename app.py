@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import gradio as gr
 from openai import OpenAI
@@ -24,17 +24,6 @@ def get_local_speech_recognizer():
     return pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
 
 
-def get_file_path(file_value: Any) -> str | None:
-    """Normalize Gradio multimodal file values into a filepath."""
-    if not file_value:
-        return None
-    if isinstance(file_value, str):
-        return file_value
-    if isinstance(file_value, dict):
-        return file_value.get("path") or file_value.get("name")
-    return getattr(file_value, "path", None) or getattr(file_value, "name", None)
-
-
 def transcribe_with_local_whisper(audio_path: str) -> str:
     recognizer = get_local_speech_recognizer()
     result = recognizer(audio_path)
@@ -46,10 +35,7 @@ def transcribe_with_local_whisper(audio_path: str) -> str:
 def transcribe_with_openai(audio_path: str, api_key: str) -> str:
     client = OpenAI(api_key=api_key)
     with open(audio_path, "rb") as audio_file:
-        result = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-        )
+        result = client.audio.transcriptions.create(model="whisper-1", file=audio_file)
     return (getattr(result, "text", None) or str(result)).strip()
 
 
@@ -92,62 +78,42 @@ Return a structured response with:
     return response.choices[0].message.content or "No response generated."
 
 
-def process_chat_message(
-    message: dict[str, Any],
-    history: list[dict[str, Any]],
+def process_audio_workflow(
+    audio_path: str | None,
+    instruction: str,
     provider: Provider,
     api_key: str,
     model: str,
-    default_goal: str,
     progress: gr.Progress = gr.Progress(track_tqdm=True),
-) -> str:
-    """ChatInterface handler with audio upload inside the message box.
-
-    Users provide their own API key. No key is stored or hardcoded.
-    """
-    text = (message.get("text") or "").strip()
-    files = message.get("files") or []
-
-    audio_path = None
-    for file_value in files:
-        file_path = get_file_path(file_value)
-        if file_path and file_path.lower().endswith((".wav", ".mp3", ".m4a", ".flac", ".ogg", ".webm", ".mp4")):
-            audio_path = file_path
-            break
-
+) -> tuple[str, str, str]:
     if not audio_path:
-        return (
-            "Please attach an audio file using the upload button in the message box. "
-            "You can also type an instruction such as: 'Transcribe this and create an image prompt.'"
-        )
+        return "Please upload or record an audio file first.", "", ""
 
     api_key = (api_key or "").strip()
     provider = provider or "OpenAI"
     model = (model or "gpt-4o-mini").strip()
-    user_goal = text or default_goal or "Transcribe this audio, explain it, and create an image-generation prompt."
+    instruction = instruction or "Transcribe this audio, explain it, and create an image-generation prompt."
 
-    progress(0.15, desc="Audio received. Starting transcription...")
-
+    progress(0.2, desc="Transcribing audio...")
     try:
         if provider == "OpenAI" and api_key:
             transcription = transcribe_with_openai(audio_path, api_key)
         else:
             transcription = transcribe_with_local_whisper(audio_path)
     except Exception as exc:
-        return f"Transcription failed: {exc}"
+        return f"Transcription failed: {exc}", "", ""
 
-    progress(0.65, desc="Building LLM analysis with user-provided key...")
-
+    progress(0.7, desc="Running LLM analysis...")
     try:
-        llm_output = build_llm_summary(
+        analysis = build_llm_summary(
             transcription=transcription,
             provider=provider,
             api_key=api_key,
             model=model,
-            user_goal=user_goal,
+            user_goal=instruction,
         )
     except Exception as exc:
-        llm_output = f"LLM analysis failed: {exc}"
+        analysis = f"LLM analysis failed: {exc}"
 
     image_prompt = f"""
 Create a cinematic image inspired by this audio transcription:
@@ -158,63 +124,51 @@ Style: expressive, atmospheric, emotionally rich, detailed lighting, high-qualit
 """.strip()
 
     progress(1.0, desc="Done")
-
-    return f"""
-## 1. Transcription
-
-{transcription}
-
-## 2. LLM analysis
-
-{llm_output}
-
-## 3. Image-generation prompt
-
-```text
-{image_prompt}
-```
-""".strip()
+    return transcription, analysis, image_prompt
 
 
-provider_input = gr.Dropdown(
-    choices=["OpenAI", "OpenRouter"],
-    value="OpenAI",
-    label="Provider for LLM analysis",
-)
-api_key_input = gr.Textbox(
-    label="Your API key",
-    type="password",
-    placeholder="Paste your OpenAI or OpenRouter key. It is used only for this request.",
-)
-model_input = gr.Textbox(
-    label="Model",
-    value="gpt-4o-mini",
-    placeholder="OpenAI: gpt-4o-mini | OpenRouter: openai/gpt-4o-mini",
-)
-default_goal_input = gr.Textbox(
-    label="Default instruction",
-    value="Transcribe this audio, explain the meaning if possible, and create a cinematic image-generation prompt.",
-    lines=3,
-)
+with gr.Blocks(title=APP_TITLE) as demo:
+    gr.Markdown(f"# {APP_TITLE}")
+    gr.Markdown(
+        "Upload or record audio, then process it with local Whisper or your own OpenAI/OpenRouter key. "
+        "No API key is stored or hardcoded."
+    )
+    gr.Markdown(f"GitHub: {GITHUB_REPO}  \nHugging Face Space: {HF_SPACE}")
 
+    audio_input = gr.Audio(label="Upload or record audio", type="filepath")
+    instruction_input = gr.Textbox(
+        label="Instruction",
+        value="Transcribe this audio, explain the meaning if possible, and create a cinematic image-generation prompt.",
+        lines=3,
+    )
 
-demo = gr.ChatInterface(
-    fn=process_chat_message,
-    multimodal=True,
-    type="messages",
-    title=APP_TITLE,
-    description=(
-        "Upload or record audio directly in the chat box. The app transcribes the audio, "
-        "then uses your own OpenAI or OpenRouter API key for LLM analysis. No keys are stored.\n\n"
-        f"GitHub: {GITHUB_REPO} | Hugging Face Space: {HF_SPACE}"
-    ),
-    textbox=gr.MultimodalTextbox(
-        file_types=["audio"],
-        placeholder="Upload audio here and optionally type: Transcribe this and create an image prompt...",
-    ),
-    additional_inputs=[provider_input, api_key_input, model_input, default_goal_input],
-    additional_inputs_accordion=gr.Accordion("API settings", open=True),
-)
+    with gr.Accordion("API settings", open=True):
+        provider_input = gr.Dropdown(
+            choices=["OpenAI", "OpenRouter"],
+            value="OpenAI",
+            label="Provider for LLM analysis",
+        )
+        api_key_input = gr.Textbox(
+            label="Your API key",
+            type="password",
+            placeholder="Paste your OpenAI or OpenRouter key. It is used only for this request.",
+        )
+        model_input = gr.Textbox(
+            label="Model",
+            value="gpt-4o-mini",
+            placeholder="OpenAI: gpt-4o-mini | OpenRouter: openai/gpt-4o-mini",
+        )
+
+    run_button = gr.Button("Process audio", variant="primary")
+    transcription_output = gr.Textbox(label="1. Transcription", lines=6)
+    analysis_output = gr.Markdown(label="2. LLM analysis")
+    image_prompt_output = gr.Textbox(label="3. Image-generation prompt", lines=8)
+
+    run_button.click(
+        process_audio_workflow,
+        inputs=[audio_input, instruction_input, provider_input, api_key_input, model_input],
+        outputs=[transcription_output, analysis_output, image_prompt_output],
+    )
 
 
 if __name__ == "__main__":
