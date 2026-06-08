@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620">
+  <rect width="1100" height="620" fill="#ffffff"/>
+  <text x="550" y="48" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#111827">Audio → Text → Image Generation</text>
+  <text x="550" y="82" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" fill="#4b5563">Hindi singing audio converted into text, then used to generate an image output.</text>
+
+  <rect x="60" y="125" width="450" height="220" rx="18" fill="#f9fafb" stroke="#d1d5db"/>
+  <text x="285" y="160" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#111827">1. Speech-to-text transcription</text>
+  <rect x="95" y="190" width="380" height="110" rx="8" fill="#ffffff" stroke="#d1d5db"/>
+  <text x="118" y="220" font-family="monospace" font-size="15" fill="#111827">The transcription is this:</text>
+  <text x="118" y="262" font-family="Noto Sans Devanagari, Arial, sans-serif" font-size="18" fill="#111827">आगो जब तुम साजना आओगा फूल खिलेंगे</text>
+  <text x="118" y="288" font-family="Noto Sans Devanagari, Arial, sans-serif" font-size="18" fill="#111827">बरसिया सावन झूम झूम</text>
+
+  <path d="M510 250 C545 250 555 250 590 250" stroke="#f97316" stroke-width="6" fill="none" marker-end="url(#arrow)"/>
+
+  <rect x="590" y="125" width="450" height="380" rx="18" fill="#f9fafb" stroke="#d1d5db"/>
+  <text x="815" y="160" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#111827">2. Generated image output</text>
+  <rect x="700" y="190" width="230" height="230" rx="18" fill="#111827"/>
+  <circle cx="815" cy="285" r="74" fill="#9ca3af" opacity="0.25"/>
+  <ellipse cx="815" cy="278" rx="54" ry="68" fill="#8b5e3c"/>
+  <path d="M755 250 C770 200 858 200 875 250 C850 220 780 220 755 250" fill="#0f172a"/>
+  <rect x="758" y="300" width="114" height="82" rx="18" fill="#0f172a"/>
+  <path d="M775 276 Q815 322 855 276" stroke="#111827" stroke-width="16" fill="none" stroke-linecap="round"/>
+  <rect x="770" y="265" width="90" height="22" rx="10" fill="none" stroke="#111827" stroke-width="5"/>
+  <circle cx="795" cy="275" r="5" fill="#111827"/>
+  <circle cx="840" cy="275" r="5" fill="#111827"/>
+  <text x="815" y="458" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#374151">Generated visual result from the multimodal notebook</text>
+
+  <rect x="150" y="405" width="320" height="120" rx="14" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="310" y="438" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="700" fill="#111827">Workflow captured</text>
+  <text x="180" y="472" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#111827">Audio input: Hindi singing</text>
+  <text x="180" y="500" font-family="Arial, Helvetica, sans-serif" font-size="16" fill="#111827">Output: transcription + generated image</text>
+
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#f97316"/></marker></defs>
+</svg>
