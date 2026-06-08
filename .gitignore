@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.DS_Store
+.ipynb_checkpoints/
+
+# Model/cache outputs
+models/
+outputs/
+cache/
+*.log
+
+# Large media files can be stored with Git LFS later
+*.mp4
+*.wav
+*.m4a
+*.mp3
