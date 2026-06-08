@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -24,9 +27,49 @@ def get_local_speech_recognizer():
     return pipeline("automatic-speech-recognition", model="openai/whisper-tiny")
 
 
+def convert_audio_to_wav(input_path: str) -> str:
+    """Convert uploaded/recorded audio to a clean WAV file for local Whisper.
+
+    Gradio recordings may arrive as webm/mp4/temp files that soundfile cannot
+    decode directly. The Hugging Face Space has ffmpeg available in most Gradio
+    images, so we normalize everything to 16 kHz mono WAV before transcription.
+    """
+    source = Path(input_path)
+    if not source.exists():
+        raise FileNotFoundError(f"Audio file not found: {input_path}")
+
+    if not shutil.which("ffmpeg"):
+        return input_path
+
+    temp_dir = Path(tempfile.mkdtemp(prefix="audio_normalized_"))
+    wav_path = temp_dir / "audio_16khz_mono.wav"
+
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        str(source),
+        "-vn",
+        "-acodec",
+        "pcm_s16le",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        str(wav_path),
+    ]
+
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise RuntimeError(f"Audio conversion failed: {completed.stderr[-1000:]}")
+
+    return str(wav_path)
+
+
 def transcribe_with_local_whisper(audio_path: str) -> str:
+    normalized_audio = convert_audio_to_wav(audio_path)
     recognizer = get_local_speech_recognizer()
-    result = recognizer(audio_path)
+    result = recognizer(normalized_audio)
     if isinstance(result, dict):
         return result.get("text", str(result)).strip()
     return str(result).strip()
@@ -94,7 +137,7 @@ def process_audio_workflow(
     model = (model or "gpt-4o-mini").strip()
     instruction = instruction or "Transcribe this audio, explain it, and create an image-generation prompt."
 
-    progress(0.2, desc="Transcribing audio...")
+    progress(0.2, desc="Preparing and transcribing audio...")
     try:
         if provider == "OpenAI" and api_key:
             transcription = transcribe_with_openai(audio_path, api_key)
